@@ -31,3 +31,45 @@ glimpse(dataCleanTmp1)
 Now we have successfully reduced the number of columns from 34 to 19. Before being able to process the data further, we need to make sure that we understand each column name.
 
 ## Understanding column names
+### Original understanding
+For the remaining columns, the understanding so far is that columns whose name starts with `rd.` describe road information while columns whose name starts with `rd.rp.` describe a report submitted by a user.
+
+### In-depth understanding
+1. It is clear that `crawl_date` descrives the date in UTC at which the data was crawled from bey2ollak.com
+2. It is clear that `rd.nm` means the name of the road
+3. `rd.ri`
+4. `rd.stid`
+5. `rd.hr`
+6. `rd.mn`
+7. `rd.new`
+8. `rd.img`
+9. `rd.strq`
+10. `rd.cmrq`
+11. It is clear that `rd.rp.nm` means the username of the user who submitted the report
+12. It is clear that `rd.rp.fullnm` means the fullname of the user who submitted the report
+13. It was concluded from bey2ollak.com website and the column values that `rd.rp.hr` is the the number of hours between the time the report was created and the crawl time
+14. `rd.rp.mn` complements `rd.rp.hr` with the number of minutes
+15. `rd.rp.stid`
+16. It is clear that `rd.rp.cm` means the comment of this report on the current state of the road
+17.  `rd.rp.cmid` appears to be the unique id of the report comment, however when testing the uniqueness with the follwing snippet:
+```{r}
+length(unique(dataCleanTmp1$rd.rp.cmid))
+```
+we do not get the total number of rows, so more investigation is needed here.
+18. `rd.rp.rpImg`
+19. `rd.rp.img`
+
+## Cleaning the data - Part II
+An initial attempt was carried out to remove any duplicate rows is as follows:
+```{r}
+dataCleanTmp2 <- unique(dataCleanTmp1)
+dim(dataCleanTmp2)
+```
+We observe that no rows were removed in the above process. After understanding the data,  we discover that this approach was useless due to the crawling mechanism. Since the crawler takes the data from bey2ollak.com feed every 30 minutes, any entry that remains on the feed for more than 30 minutes is duplicated in the crawled data. But those values which are basically duplicates of the same report have different values for `crawl_date` as well as its dependent values `rd.rp.hr` & `rd.rp.mn`. We previously observed that the number of unique `rd.rp.cmid` values is 148367, so we can use this column to filter the dataframe to truly get the unique entries as follows:
+```{r}
+dataCleanTmp2 <- dataCleanTmp1[!duplicated(dataCleanTmp1[,c("rd.rp.cmid")]),]
+```
+We then check that the remaining number of rows is indeed 148367:
+```{r}
+dim(dataCleanTmp2)
+```
