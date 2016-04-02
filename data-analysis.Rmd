@@ -3,4 +3,31 @@ title: Traffic Data Analysis
 output: html_document
 ---
 
-this is where things start :)
+## Attaching the required libraries
+```{r}
+library(dplyr)
+```
+
+## First acquaintance with the data
+Loading the data:
+```{r}
+dataOriginal <- read.csv('all-semi-unique.csv')
+```
+Getting a glimpse of the data to know its dimensions, the data type for each column and an some of its assigned values:
+```{r}
+glimpse(dataOriginal)
+```
+Getting the number of NAs for each column:
+```{r}
+sapply(dataOriginal, function(x) sum(is.na(x)))
+```
+
+## Cleaning the data - Part I
+Removing columns that have a constant value in all observations:
+```{r}
+dataCleanTmp1 <- dataOriginal[sapply(dataOriginal, function(x) length(unique(x))) > 1]
+glimpse(dataCleanTmp1)
+```
+Now we have successfully reduced the number of columns from 34 to 19. Before being able to process the data further, we need to make sure that we understand each column name.
+
+## Understanding column names
