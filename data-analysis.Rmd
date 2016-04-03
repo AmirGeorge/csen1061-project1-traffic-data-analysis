@@ -6,6 +6,7 @@ output: html_document
 ## Attaching the required libraries
 ```{r}
 library(dplyr)
+library(ggplot2)
 ```
 
 ## First acquaintance with the data
@@ -41,10 +42,10 @@ For the remaining columns, the understanding so far is that columns whose name s
 4. `rd.stid`
 5. `rd.hr`
 6. `rd.mn`
-7. `rd.new`
+7. `rd.new` appears to be a boolean value indicating whether the road is new or not
 8. `rd.img`
-9. `rd.strq`
-10. `rd.cmrq`
+9. `rd.strq` is a boolean value TODO
+10. `rd.cmrq` is a boolean value TODO
 11. It is clear that `rd.rp.nm` means the username of the user who submitted the report
 12. It is clear that `rd.rp.fullnm` means the fullname of the user who submitted the report
 13. It was concluded from bey2ollak.com website and the column values that `rd.rp.hr` is the the number of hours between the time the report was created and the crawl time
@@ -55,9 +56,9 @@ For the remaining columns, the understanding so far is that columns whose name s
 ```{r}
 length(unique(dataCleanTmp1$rd.rp.cmid))
 ```
-we do not get the total number of rows, so more investigation is needed here.
+we do not get the total number of rows, so more investigation is needed here.  
 18. `rd.rp.rpImg`
-19. `rd.rp.img`
+19. `rd.rp.img` is the id of the logo image of the user who submitted the report
 
 ## Cleaning the data - Part II
 An initial attempt was carried out to remove any duplicate rows is as follows:
