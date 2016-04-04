@@ -13,45 +13,66 @@ library(corrplot)
 ## First acquaintance with the data
 Loading the data:
 ```{r}
-dataOriginal <- read.csv('all-semi-unique.csv')
+df <- read.csv('all-semi-unique.csv')
 ```
 Getting a glimpse of the data to know its dimensions, the data type for each column and an some of its assigned values:
 ```{r}
-glimpse(dataOriginal)
+glimpse(df)
 ```
 Getting the number of NAs for each column:
 ```{r}
-sapply(dataOriginal, function(x) sum(is.na(x)))
+sapply(df, function(x) sum(is.na(x)))
 ```
 
-## Cleaning the data - Part I
-Removing columns that have a constant value in all observations:
+## Cleaning the data - Part I (Blind Cleaning)
+Removing duplicate observations as well as columns that have a constant value in all observations:
 ```{r}
-dataCleanTmp1 <- dataOriginal[sapply(dataOriginal, function(x) length(unique(x))) > 1]
-glimpse(dataCleanTmp1)
+df <- unique(df)
+df <- df[sapply(df, function(x) length(unique(x))) > 1]
+glimpse(df)
 ```
-Now we have successfully reduced the number of columns from 34 to 19. Before being able to process the data further, we need to make sure that we understand each column name.
+There were no duplicate rows but we have successfully reduced the number of columns from 34 to 19. Before being able to process the data further, we need to make sure that we understand each column name.
 
-## Understanding column names
-### Original understanding
-For the remaining columns, the understanding so far is that columns whose name starts with `rd.` describe road information while columns whose name starts with `rd.rp.` describe a report submitted by a user.
+## Cleaning the data - Part II (Educated Cleaning)
 
-### In-depth understanding
-
-#### Uniqueness tests
+### `rd.rp.cmid` uniqueness
+An initial guess for the meaning of this column is the report's comment ID. We take a look into the uniqueness of this ID for randonly selected IDs.
 ```{r}
-sapply(dataCleanTmp1, function(x) length(unique(x)))
+df[df$rd.rp.cmid=="9424155",]
 ```
+and:
+```{r}
+df[df$rd.rp.cmid=="9330190",]
+```
+We discover that each comment id was repeated more than once. The reason for this is attributed to different crawling times. Due to the crawling mechanism, it is possible that some data is duplicated if it still appears on bey2ollak.com feed in the next crawl. We note that the values for `rd.rp.hr` and `rd.rp.mn` change with respect to the crawl time. This change indicates that these two columns reperesent the elapsed time for this report (with respect to the crawl time of course). This understanding provides two very useful applications:
 
+#### Filter rows based on `rd.rp.cmid`
+Now, the number of rows can be significantly reduced to represent each report only once   as follows:
+```{r}
+df <- df[!duplicated(df[,c("rd.rp.cmid")]),]
+dim(df)
+```
+The number of rows is now significantly reduced to 148367.
+
+
+#### Extract report time
+
+#Trivia
 #### `rd.ri` meaning
 By looking at the html source of bey2ollak.com we can confirm that the each value in `rd.ri` represents an id of the corresponding road. It is interesting to note that some anamolies were detected when running the following snippet.
 ```{r}
-tmpDF <- dataCleanTmp1 %>% group_by(rd.nm) %>% summarize(NumRdId=length(unique(rd.ri)))
-tmpDF[tmpDF$rdRi > 1,]
+tmpDF <- df %>% group_by(rd.nm) %>% summarize(numRdId=length(unique(rd.ri)))
+tmpDF[tmpDF$numRdId > 1,]
 ```
 It was found that the three roads displayed in the above results have more than one id, which is weird. We found the reason to be that since bey2ollak.com supports roads in both Cairo and Alex, there are two roads named "Other Roads" in both cities. Also, there are multiple entries among the two cities for the Sa7rawy road connecting them.
 
 #### `rd.new` meaning
+`rd.new` is a boolean value that has a constant assignment 0 or 1 for each road. This is confirmed by the following snippet:
+```{r}
+tmpDF <- df %>% group_by(rd.nm) %>% summarize(numRdNew=length(unique(rd.new)))
+nrow(tmpDF[tmpDF$numRdNew == 1,]) == nrow(tmpDF)
+```
+There is no clear intuition behind the column meaning and the html of bey2ollak.com provides no help in that regard.
 
 #### Image columns
 
@@ -59,7 +80,7 @@ It was found that the three roads displayed in the above results have more than 
 #### Testing correlations
 ```{r}
 cor_feats = c("rd.ri","rd.stid","rd.hr","rd.mn","rd.new","rd.strq","rd.cmrq","rd.rp.hr","rd.rp.mn","rd.rp.stid","rd.rp.cmid","rd.rp.rpImg","rd.rp.img")
-cor_mat = cor(dataCleanTmp1[, cor_feats], use = "complete")
+cor_mat = cor(df[, cor_feats], use = "complete")
 corrplot(method = "shade", cor_mat)
 cor_mat
 ```
@@ -68,53 +89,24 @@ Le3b association
 
 ```
 
-#### Duplicates in `rd.rp.cmid`
-By examining the different rows containing the same value for `rd.rp.cmid`, for example:
-```{r}
-dataCleanTmp1[dataCleanTmp1$rd.rp.cmid=="9370000",]
-```
-and:
-```{r}
-dataCleanTmp1[dataCleanTmp1$rd.rp.cmid=="9330190",]
-```
+#### Conclusions
 
-#### Conclusions (TODO rewrite them with certainty)
-
-1. It is clear that `crawl_date` describes the date in UTC at which the data was crawled from bey2ollak.com
+1.`crawl_date` describes the date in UTC at which the data was crawled from bey2ollak.com
 2. It is clear that `rd.nm` means the name of the road
 3. `rd.ri`
 4. `rd.stid`
 5. `rd.hr`
 6. `rd.mn`
-7. `rd.new` appears to be a boolean value indicating whether the road is new or not
+7. `rd.new` is a boolean value TODO
 8. `rd.img`
 9. `rd.strq` is a boolean value TODO
 10. `rd.cmrq` is a boolean value TODO
-11. It is clear that `rd.rp.nm` means the username of the user who submitted the report
-12. It is clear that `rd.rp.fullnm` means the fullname of the user who submitted the report
-13. It was concluded from bey2ollak.com website and the column values that `rd.rp.hr` is the the number of hours between the time the report was created and the crawl time
+11. `rd.rp.nm` means the username of the user who submitted the report
+12. `rd.rp.fullnm` means the fullname of the user who submitted the report
+13. `rd.rp.hr` is the the number of hours between the time the report was created and the crawl time
 14. `rd.rp.mn` complements `rd.rp.hr` with the number of minutes
 15. `rd.rp.stid`
-16. It is clear that `rd.rp.cm` means the comment of this report on the current state of the road
-17.  `rd.rp.cmid` appears to be the unique id of the report comment, however when testing the uniqueness with the follwing snippet:
-```{r}
-length(unique(dataCleanTmp1$rd.rp.cmid))
-```
-we do not get the total number of rows, so more investigation is needed here.  
+16. `rd.rp.cm` means the comment of this report on the current state of the road
+17.  `rd.rp.cmid` is the unique id of the report comment.
 18. `rd.rp.rpImg`
 19. `rd.rp.img` is the id of the logo image of the user who submitted the report
-
-## Cleaning the data - Part II
-An initial attempt was carried out to remove any duplicate rows is as follows:
-```{r}
-dataCleanTmp2 <- unique(dataCleanTmp1)
-dim(dataCleanTmp2)
-```
-We observe that no rows were removed in the above process. After understanding the data,  we discover that this approach was useless due to the crawling mechanism. Since the crawler takes the data from bey2ollak.com feed every 30 minutes, any entry that remains on the feed for more than 30 minutes is duplicated in the crawled data. But those values which are basically duplicates of the same report have different values for `crawl_date` as well as its dependent values `rd.rp.hr` & `rd.rp.mn`. We previously observed that the number of unique `rd.rp.cmid` values is 148367, so we can use this column to filter the dataframe to truly get the unique entries as follows:
-```{r}
-dataCleanTmp2 <- dataCleanTmp1[!duplicated(dataCleanTmp1[,c("rd.rp.cmid")]),]
-```
-We then check that the remaining number of rows is indeed 148367:
-```{r}
-dim(dataCleanTmp2)
-```
