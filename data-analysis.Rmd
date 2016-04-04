@@ -7,6 +7,7 @@ output: html_document
 ```{r}
 library(dplyr)
 library(ggplot2)
+library(corrplot)
 ```
 
 ## First acquaintance with the data
@@ -36,7 +37,50 @@ Now we have successfully reduced the number of columns from 34 to 19. Before bei
 For the remaining columns, the understanding so far is that columns whose name starts with `rd.` describe road information while columns whose name starts with `rd.rp.` describe a report submitted by a user.
 
 ### In-depth understanding
-1. It is clear that `crawl_date` descrives the date in UTC at which the data was crawled from bey2ollak.com
+
+#### Uniqueness tests
+```{r}
+sapply(dataCleanTmp1, function(x) length(unique(x)))
+```
+
+#### `rd.ri` meaning
+By looking at the html source of bey2ollak.com we can confirm that the each value in `rd.ri` represents an id of the corresponding road. It is interesting to note that some anamolies were detected when running the following snippet.
+```{r}
+tmpDF <- dataCleanTmp1 %>% group_by(rd.nm) %>% summarize(NumRdId=length(unique(rd.ri)))
+tmpDF[tmpDF$rdRi > 1,]
+```
+It was found that the three roads displayed in the above results have more than one id, which is weird. We found the reason to be that since bey2ollak.com supports roads in both Cairo and Alex, there are two roads named "Other Roads" in both cities. Also, there are multiple entries among the two cities for the Sa7rawy road connecting them.
+
+#### `rd.new` meaning
+
+#### Image columns
+
+
+#### Testing correlations
+```{r}
+cor_feats = c("rd.ri","rd.stid","rd.hr","rd.mn","rd.new","rd.strq","rd.cmrq","rd.rp.hr","rd.rp.mn","rd.rp.stid","rd.rp.cmid","rd.rp.rpImg","rd.rp.img")
+cor_mat = cor(dataCleanTmp1[, cor_feats], use = "complete")
+corrplot(method = "shade", cor_mat)
+cor_mat
+```
+Le3b association
+```{r}
+
+```
+
+#### Duplicates in `rd.rp.cmid`
+By examining the different rows containing the same value for `rd.rp.cmid`, for example:
+```{r}
+dataCleanTmp1[dataCleanTmp1$rd.rp.cmid=="9370000",]
+```
+and:
+```{r}
+dataCleanTmp1[dataCleanTmp1$rd.rp.cmid=="9330190",]
+```
+
+#### Conclusions (TODO rewrite them with certainty)
+
+1. It is clear that `crawl_date` describes the date in UTC at which the data was crawled from bey2ollak.com
 2. It is clear that `rd.nm` means the name of the road
 3. `rd.ri`
 4. `rd.stid`
