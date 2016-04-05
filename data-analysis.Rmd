@@ -12,7 +12,7 @@ library(corrplot)
 
 ## First acquaintance with the data
 Loading the data:
-```{r}
+```{r cache=TRUE}
 df <- read.csv('all-semi-unique.csv')
 ```
 Getting a glimpse of the data to know its dimensions, the data type for each column and an some of its assigned values:
@@ -44,7 +44,9 @@ and:
 ```{r}
 df[df$rd.rp.cmid=="9330190",]
 ```
-We discover that each comment id was repeated more than once. The reason for this is attributed to different crawling times. Due to the crawling mechanism, it is possible that some data is duplicated if it still appears on bey2ollak.com feed in the next crawl. We note that the values for `rd.rp.hr` and `rd.rp.mn` change with respect to the crawl time. This change indicates that these two columns reperesent the elapsed time for this report (with respect to the crawl time of course). This understanding provides two very useful applications:
+We discover that each comment id was repeated more than once. The reason for this is attributed to different crawling times. Due to the crawling mechanism, it is possible that some data is duplicated if it still appears on bey2ollak.com feed in the next crawl. We note that the values for `rd.rp.hr` and `rd.rp.mn` change with respect to the crawl time. This change indicates that these two columns reperesent the elapsed time for this report (with respect to the crawl time of course).  
+Such interpretation agrees with bey2ollak.com website since only elapsed times for roads and reports are provided, not the actual times.
+This understanding provides two very useful applications:
 
 #### Filter rows based on `rd.rp.cmid`
 Now, the number of rows can be significantly reduced to represent each report only once   as follows:
@@ -55,9 +57,21 @@ dim(df)
 The number of rows is now significantly reduced to 148367.
 
 
-#### Extract report time
+#### Extract report and road absolute timings
+Based on our previous understanding of `rd.rp.hr` and `rd.rp.min`, it is highly likely that `rd.hr` and `rd.mn` indicate the elapsed time of the latest report submitted for this report. What strengthens this theory is that this is the way bey2ollak.com website represents the time value written under each road.  
+So, now we are going to properly represent the time values as time objects indicating the proper timestamp not relative times.
+```{r}
+df <- df %>% mutate(crawl_date=as.POSIXct(crawl_date, format = "%a %b %e %H:%M:%S UTC %Y", tz = "UTC"))
+df <- df %>% mutate(rd.time = crawl_date - rd.mn * 60 - rd.hr*60*60, rd.rp.time = crawl_date - rd.rp.mn * 60 - rd.rp.hr*60*60)
+```
+We can now check if the `rd.time` is indeed the most recent `rd.rp.time`:
+```{r}
+#df %>% group_by(rd.ri,rd.crawl_date) %>% summarize(rdTime=mean(rd.time), maxRpTime=max(rd.rp.time))
+#TODO
+```
 
 #Trivia
+
 #### `rd.ri` meaning
 By looking at the html source of bey2ollak.com we can confirm that the each value in `rd.ri` represents an id of the corresponding road. It is interesting to note that some anamolies were detected when running the following snippet.
 ```{r}
@@ -73,6 +87,39 @@ tmpDF <- df %>% group_by(rd.nm) %>% summarize(numRdNew=length(unique(rd.new)))
 nrow(tmpDF[tmpDF$numRdNew == 1,]) == nrow(tmpDF)
 ```
 There is no clear intuition behind the column meaning and the html of bey2ollak.com provides no help in that regard.
+
+####Attempt at congested place
+```{r}
+tmpDf <- df[!is.na(df$rd.rp.stid),]
+tmpDf <- tmpDf[tmpDf$rd.rp.stid < 6,]
+#congestionDf <- tmpDf %>% group_by(rd.nm) %>% summarize(avRep=mean(rd.rp.stid)) %>% arrange(desc(avRep))
+congestionDf <- tmpDf %>% group_by(rd.nm) %>% summarize(avRep=mean(rd.rp.stid), numRep=n()) %>% arrange(desc(avRep))
+meanNmRep <- mean(congestionDf$numRep)
+congestionDfHighNmRep <- congestionDf[congestionDf$numRep > meanNmRep,]
+head(congestionDfHighNmRep)
+```
+
+####Attempt at congested hour
+```{r}
+tmpDf <- df[!is.na(df$rd.rp.stid),]
+tmpDf <- tmpDf[tmpDf$rd.rp.stid < 6,]
+tmpDf2 <- tmpDf %>% mutate(Hour=format(as.POSIXct(rd.rp.time, format="%a %b %e %H:%M:%S UTC %Y"), format="%H"))
+tmpDf2 <- tmpDf2 %>% mutate(Hour = ((type.convert(Hour) + 2) %% 24))
+congestionDf <- tmpDf2 %>% group_by(Hour) %>% summarize(avRep=mean(rd.rp.stid), numRep=n()) %>% arrange(desc(avRep))
+meanNmRep <- mean(congestionDf$numRep)
+congestionDfHighNmRep <- congestionDf[congestionDf$numRep > meanNmRep,]
+congestionDfHighNmRep
+```
+
+####Attempt at highest user activity hour
+```{r}
+tmpDf <- df[!is.na(df$rd.rp.stid),]
+tmpDf <- tmpDf[tmpDf$rd.rp.stid < 6,]
+tmpDf2 <- tmpDf %>% mutate(Hour=format(as.POSIXct(rd.rp.time, format="%a %b %e %H:%M:%S UTC %Y"), format="%H"))
+tmpDf2 <- tmpDf2 %>% mutate(Hour = ((type.convert(Hour) + 2) %% 24))
+congestionDf <- tmpDf2 %>% group_by(Hour) %>% summarize(avRep=mean(rd.rp.stid), numRep=n()) %>% arrange(desc(numRep))
+congestionDf
+```
 
 #### Image columns
 
