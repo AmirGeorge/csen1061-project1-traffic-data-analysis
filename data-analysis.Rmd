@@ -88,6 +88,18 @@ nrow(tmpDF[tmpDF$numRdNew == 1,]) == nrow(tmpDF)
 ```
 There is no clear intuition behind the column meaning and the html of bey2ollak.com provides no help in that regard.
 
+#### `rd.strq` meaning
+
+An interesting observation is the the `rd.strq` value is unset only for long travel roads, namely between Cairo & Alex, Cairo & Hurghada, Cairo & Sharm. On the other hand, the majority of the group of roads having this value set are roads inside a city, while a small proportion is shorter travel roads like Zera3y road between Cairo & Banha, Cairo & Tanta, Alex & Tanta. So, there are good reasons to believe that this value is thresholded by the distance. If interpreted as "status required", then we can theorize that bey2ollak.com does not require users to provide a status for comments on long travel roads. A look at the website html strengthens this hypothesis.
+```{r}
+strqUnset <- df[df$rd.strq==0,c("rd.strq","rd.nm")]
+strqUnset <- strqUnset[!duplicated(strqUnset[,c("rd.nm")]),] %>% as.data.frame
+strqUnset %>% head
+strqSet <- df[df$rd.strq==1,c("rd.strq","rd.nm")]
+strqSet <- strqSet[!duplicated(strqSet[,c("rd.nm")]),] %>% as.data.frame
+strqSet %>% head
+```
+
 ####Attempt at congested place
 ```{r}
 tmpDf <- df[!is.na(df$rd.rp.stid),]
@@ -106,9 +118,7 @@ tmpDf <- tmpDf[tmpDf$rd.rp.stid < 6,]
 tmpDf2 <- tmpDf %>% mutate(Hour=format(as.POSIXct(rd.rp.time, format="%a %b %e %H:%M:%S UTC %Y"), format="%H"))
 tmpDf2 <- tmpDf2 %>% mutate(Hour = ((type.convert(Hour) + 2) %% 24))
 congestionDf <- tmpDf2 %>% group_by(Hour) %>% summarize(avRep=mean(rd.rp.stid), numRep=n()) %>% arrange(desc(avRep))
-meanNmRep <- mean(congestionDf$numRep)
-congestionDfHighNmRep <- congestionDf[congestionDf$numRep > meanNmRep,]
-congestionDfHighNmRep
+congestionDf
 ```
 
 ####Attempt at highest user activity hour
@@ -118,6 +128,15 @@ tmpDf <- tmpDf[tmpDf$rd.rp.stid < 6,]
 tmpDf2 <- tmpDf %>% mutate(Hour=format(as.POSIXct(rd.rp.time, format="%a %b %e %H:%M:%S UTC %Y"), format="%H"))
 tmpDf2 <- tmpDf2 %>% mutate(Hour = ((type.convert(Hour) + 2) %% 24))
 congestionDf <- tmpDf2 %>% group_by(Hour) %>% summarize(avRep=mean(rd.rp.stid), numRep=n()) %>% arrange(desc(numRep))
+congestionDf
+```
+
+####Attempt at congested day
+```{r}
+tmpDf <- df[!is.na(df$rd.rp.stid),]
+tmpDf <- tmpDf[tmpDf$rd.rp.stid < 6,]
+tmpDf2 <- tmpDf %>% mutate(Weekday=format(as.POSIXct(rd.rp.time, format="%a %b %e %H:%M:%S UTC %Y"), format="%a"))
+congestionDf <- tmpDf2 %>% group_by(Weekday) %>% summarize(avRep=mean(rd.rp.stid), numRep=n()) %>% arrange(desc(avRep))
 congestionDf
 ```
 
