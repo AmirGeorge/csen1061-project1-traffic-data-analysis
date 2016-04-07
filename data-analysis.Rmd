@@ -4,8 +4,9 @@ output: html_document
 ---
 
 ## Attaching the required libraries
-```{r}
+```{r message=FALSE}
 library(dplyr)
+#options(dplyr.width = Inf)
 library(ggplot2)
 library(corrplot)
 ```
@@ -24,31 +25,27 @@ Getting the number of NAs for each column:
 sapply(df, function(x) sum(is.na(x)))
 ```
 
-## Cleaning the data - Part I (Blind Cleaning)
+# Cleaning the data - Part I (Blind Cleaning)
 Removing duplicate observations as well as columns that have a constant value in all observations:
-```{r}
+```{r cache=TRUE}
 df <- unique(df)
 df <- df[sapply(df, function(x) length(unique(x))) > 1]
 glimpse(df)
 ```
 There were no duplicate rows but we have successfully reduced the number of columns from 34 to 19. Before being able to process the data further, we need to make sure that we understand each column name.
 
-## Cleaning the data - Part II (Educated Cleaning)
+# Cleaning the data - Part II (Educated Cleaning)
 
-### `rd.rp.cmid` uniqueness
-An initial guess for the meaning of this column is the report's comment ID. We take a look into the uniqueness of this ID for randonly selected IDs.
+## `rd.rp.cmid` uniqueness
+An initial guess for the meaning of this column is the report's comment ID. We take a look into the uniqueness of this ID.
 ```{r}
 df[df$rd.rp.cmid=="9424155",]
-```
-and:
-```{r}
-df[df$rd.rp.cmid=="9330190",]
 ```
 We discover that each comment id was repeated more than once. The reason for this is attributed to different crawling times. Due to the crawling mechanism, it is possible that some data is duplicated if it still appears on bey2ollak.com feed in the next crawl. We note that the values for `rd.rp.hr` and `rd.rp.mn` change with respect to the crawl time. This change indicates that these two columns reperesent the elapsed time for this report (with respect to the crawl time of course).  
 Such interpretation agrees with bey2ollak.com website since only elapsed times for roads and reports are provided, not the actual times.
 This understanding provides two very useful applications:
 
-#### Filter rows based on `rd.rp.cmid`
+### Filter rows based on `rd.rp.cmid`
 Now, the number of rows can be significantly reduced to represent each report only once   as follows:
 ```{r}
 df <- df[!duplicated(df[,c("rd.rp.cmid")]),]
@@ -57,41 +54,50 @@ dim(df)
 The number of rows is now significantly reduced to 148367.
 
 
-#### Extract report and road absolute timings
-Based on our previous understanding of `rd.rp.hr` and `rd.rp.min`, it is highly likely that `rd.hr` and `rd.mn` indicate the elapsed time of the latest report submitted for this report. What strengthens this theory is that this is the way bey2ollak.com website represents the time value written under each road.  
+### Extract report and road absolute timings
+Based on our previous understanding of `rd.rp.hr` and `rd.rp.min`, and by observing the website's response data, `rd.hr` and `rd.mn` indicate the elapsed time of the latest report submitted for this report.
 So, now we are going to properly represent the time values as time objects indicating the proper timestamp not relative times.
 ```{r}
 df <- df %>% mutate(crawl_date=as.POSIXct(crawl_date, format = "%a %b %e %H:%M:%S UTC %Y", tz = "UTC"))
 df <- df %>% mutate(rd.time = crawl_date - rd.mn * 60 - rd.hr*60*60, rd.rp.time = crawl_date - rd.rp.mn * 60 - rd.rp.hr*60*60)
 ```
-We can now check if the `rd.time` is indeed the most recent `rd.rp.time`:
+Then, we remove the original elapsed time columns:
 ```{r}
-#df %>% group_by(rd.ri,rd.crawl_date) %>% summarize(rdTime=mean(rd.time), maxRpTime=max(rd.rp.time))
-#TODO
+df$crawl_date <- NULL
+df$rd.hr <- NULL
+df$rd.mn <- NULL
+df$rd.rp.hr <- NULL
+df$rd.rp.mn <- NULL
 ```
 
-#Trivia
-
-#### `rd.ri` meaning
-By looking at the html source of bey2ollak.com we can confirm that the each value in `rd.ri` represents an id of the corresponding road. It is interesting to note that some anamolies were detected when running the following snippet.
+## Report status `rd.rp.stid`
+It appears from bey2ollak.com response data that the `rd.rp.stid` value indicates the status id of the report being submitted. Values ranging from 1 to 5 correspond to reports on the road congestion, with 1 being the best value (its default `rd.rp.cm` is "7alawa") and 5 the worst value (its default `rd.rp.cm` is "mafeesh amal"). Values from 6 to 10 represent inquiries or special reports like accidents.  
+Also, a number of NA values were found in the `rd.rp.stid` column. While a recognizable amount of the comments corresponding to them are either enquiring or acknowledging the existence of radars, other random comments were also found. By examining the ratio of NA values:
 ```{r}
-tmpDF <- df %>% group_by(rd.nm) %>% summarize(numRdId=length(unique(rd.ri)))
-tmpDF[tmpDF$numRdId > 1,]
+sum(is.na(df$rd.rp.stid)) / nrow(df)
 ```
-It was found that the three roads displayed in the above results have more than one id, which is weird. We found the reason to be that since bey2ollak.com supports roads in both Cairo and Alex, there are two roads named "Other Roads" in both cities. Also, there are multiple entries among the two cities for the Sa7rawy road connecting them.
-
-#### `rd.new` meaning
-`rd.new` is a boolean value that has a constant assignment 0 or 1 for each road. This is confirmed by the following snippet:
+Since they represent only 3% of our data, and their comments are a mix of the other categories, a decision was made to neglect their rows.
 ```{r}
-tmpDF <- df %>% group_by(rd.nm) %>% summarize(numRdNew=length(unique(rd.new)))
-nrow(tmpDF[tmpDF$numRdNew == 1,]) == nrow(tmpDF)
+df <- df[!is.na(df$rd.rp.stid),]
 ```
-There is no clear intuition behind the column meaning and the html of bey2ollak.com provides no help in that regard.
 
-#### `rd.strq` meaning
-
-An interesting observation is the the `rd.strq` value is unset only for long travel roads, namely between Cairo & Alex, Cairo & Hurghada, Cairo & Sharm. On the other hand, the majority of the group of roads having this value set are roads inside a city, while a small proportion is shorter travel roads like Zera3y road between Cairo & Banha, Cairo & Tanta, Alex & Tanta. So, there are good reasons to believe that this value is thresholded by the distance. If interpreted as "status required", then we can theorize that bey2ollak.com does not require users to provide a status for comments on long travel roads. A look at the website html strengthens this hypothesis.
+## Image columns
+By testing bey2ollak.com response data, it was found that values in `rd.rp.img` represent the id of the reporter's profile photo.  
+On the other hand, the column `rd.rp.rpImg` represents the id of the attached road image in the report (if any).  
+`rd.img` is a boolean value that is absent from most roads in bey2ollak.com response data, which is reflected in its high NA ratio in our dataset:
 ```{r}
+sum(is.na(df$rd.img)) / nrow(df)
+```
+We choose to remove these column since they will not be useful in our upcoming work.
+```{r}
+df$rd.rp.img <- NULL
+df$rd.rp.rpImg <- NULL
+df$rd.img <- NULL
+```
+
+## Boolean columns
+An interesting observation for the `rd.strq` value is that it is unset only for long travel roads, namely between Cairo & Alex, Cairo & Hurghada, Cairo & Sharm. On the other hand, the majority of the group of roads having this value set are roads inside a city, while a small proportion is shorter travel roads like Zera3y road between Cairo & Banha, Cairo & Tanta, Alex & Tanta. So, there are good reasons to believe that this value is thresholded by the distance. This observation was detected using this snippet:
+```{r eval=FALSE}
 strqUnset <- df[df$rd.strq==0,c("rd.strq","rd.nm")]
 strqUnset <- strqUnset[!duplicated(strqUnset[,c("rd.nm")]),] %>% as.data.frame
 strqUnset %>% head
@@ -99,8 +105,40 @@ strqSet <- df[df$rd.strq==1,c("rd.strq","rd.nm")]
 strqSet <- strqSet[!duplicated(strqSet[,c("rd.nm")]),] %>% as.data.frame
 strqSet %>% head
 ```
+No meaningful observations were found for the other two boolean values `rd.new` and `rd.cmrq`, except that most of their values are unset:
+```{r}
+sum(df$rd.new==0) / nrow(df)
+sum(df$rd.cmrq==0) / nrow(df)
+```
+Since they do not have a meaningful use within our work, and are seemingly unrelated to our metrics of interest, we choose to exclude them:
+```{r}
+df$rd.strq <- NULL
+df$rd.new <- NULL
+df$rd.cmrq <- NULL
+glimpse(df)
+```
 
-####Attempt at congested place
+
+
+# Interpretation of different column meanings
+
+## Meaning of `rd.ri`
+By looking at the html source of bey2ollak.com we can confirm that the each value in `rd.ri` represents an id of the corresponding road. It is interesting to note that some anamolies were detected when running the following snippet.
+```{r}
+tmpDF <- df %>% group_by(rd.nm) %>% summarize(numRdId=length(unique(rd.ri)))
+tmpDF[tmpDF$numRdId > 1,]
+```
+It was found that the two roads displayed in the above results have more than one id, which is weird. We found the reason to be that since bey2ollak.com supports roads in both Cairo and Alex, there are two roads named "Other Roads" in both cities. Also, there are two entries among the two cities for the Sa7rawy road connecting them.
+
+## Reporter name
+The two columns `rd.rp.nm` and `rd.rp.fullnm` represent the name and full name of the user who submitted the report, respectively. Two specail names in the `rd.rp.nm` column stand out in term of repititions; **bey2ollakgps** and **fa3el kheir**. The first is some type of an automated agent which gives periodic speed updates, while **fa3el kheir** is the default name for any reporter not willing to supply a specific name.
+```{r}
+df %>% count(rd.rp.nm,sort=TRUE) %>% head
+```
+
+## Descriptions on the data
+
+### Congestion regions
 ```{r}
 tmpDf <- df[!is.na(df$rd.rp.stid),]
 tmpDf <- tmpDf[tmpDf$rd.rp.stid < 6,]
@@ -111,7 +149,7 @@ congestionDfHighNmRep <- congestionDf[congestionDf$numRep > meanNmRep,]
 head(congestionDfHighNmRep)
 ```
 
-####Attempt at congested hour
+### Congestion hours
 ```{r}
 tmpDf <- df[!is.na(df$rd.rp.stid),]
 tmpDf <- tmpDf[tmpDf$rd.rp.stid < 6,]
@@ -140,12 +178,11 @@ congestionDf <- tmpDf2 %>% group_by(Weekday) %>% summarize(avRep=mean(rd.rp.stid
 congestionDf
 ```
 
-#### Image columns
-
+#Trivia
 
 #### Testing correlations
 ```{r}
-cor_feats = c("rd.ri","rd.stid","rd.hr","rd.mn","rd.new","rd.strq","rd.cmrq","rd.rp.hr","rd.rp.mn","rd.rp.stid","rd.rp.cmid","rd.rp.rpImg","rd.rp.img")
+cor_feats = c("rd.ri","rd.stid","rd.rp.stid","rd.rp.cmid")
 cor_mat = cor(df[, cor_feats], use = "complete")
 corrplot(method = "shade", cor_mat)
 cor_mat
