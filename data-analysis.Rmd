@@ -18,7 +18,7 @@ Loading the data:
 ```{r cache=TRUE}
 df <- read.csv('all-semi-unique.csv')
 ```
-Getting a glimpse of the data to know its dimensions, the data type for each column and an some of its assigned values:
+Getting a glimpse of the data to know its dimensions, the data type for each column and some of its assigned values:
 ```{r}
 glimpse(df)
 ```
@@ -28,23 +28,23 @@ sapply(df, function(x) sum(is.na(x)))
 ```
 
 # Cleaning the data - Part I (Blind Cleaning)
-Removing duplicate observations as well as columns that have a constant value in all observations:
+Removing duplicate rows as well as columns that have a constant value in all observations:
 ```{r cache=TRUE}
 df <- unique(df)
 df <- df[sapply(df, function(x) length(unique(x))) > 1]
 glimpse(df)
 ```
-There were no duplicate rows but we have successfully reduced the number of columns from 34 to 19. Before being able to process the data further, we need to make sure that we understand each column name.
+There were no duplicate rows but we have successfully reduced the number of columns from 34 to 19. Before being able to clean the data further, we need to make sure that we properly understand it.
 
 # Cleaning the data - Part II (Educated Cleaning)
 
 ## `rd.rp.cmid` uniqueness
 An initial guess for the meaning of this column is the report's comment ID. We take a look into the uniqueness of this ID.
 ```{r}
-df[df$rd.rp.cmid=="9424155",] %>% kable
+df[df$rd.rp.cmid=="9424155",] %>% nrow
 ```
 
-We discover that each comment id was repeated more than once. The reason for this is attributed to different crawling times. Due to the crawling mechanism, it is possible that some data is duplicated if it still appears on bey2ollak.com feed in the next crawl. We note that the values for `rd.rp.hr` and `rd.rp.mn` change with respect to the crawl time. This change indicates that these two columns reperesent the elapsed time for this report (with respect to the crawl time of course).  
+We discover that a comment id can be repeated more than once. The reason for this is attributed to different crawling times. It is possible that some data is duplicated if it still appears on bey2ollak.com feed in consecutive crawls. We note that the values for `rd.rp.hr` and `rd.rp.mn` change with respect to the crawl time. This change indicates that these two columns reperesent the elapsed time for this report (with respect to the crawl time of course).  
 Such interpretation agrees with bey2ollak.com website since only elapsed times for roads and reports are provided, not the actual times.
 This understanding provides two very useful applications:
 
@@ -124,10 +124,15 @@ Since they do not have a meaningful use within our work, and are seemingly unrel
 df$rd.strq <- NULL
 df$rd.new <- NULL
 df$rd.cmrq <- NULL
-glimpse(df)
 ```
 
-
+## Final cleaning
+Lastly, the values in the `rd.stid` and `rd.time` columns will be unused in our following analyses so we opt to remove them.
+```{r}
+df$rd.time <- NULL
+df$rd.stid <- NULL
+glimpse(df)
+```
 
 # Interpretation of different column meanings
 
@@ -135,8 +140,9 @@ glimpse(df)
 By looking at the html source of bey2ollak.com we can confirm that the each value in `rd.ri` represents an id of the corresponding road. It is interesting to note that some anamolies were detected when running the following snippet.
 ```{r}
 tmpDF <- df %>% group_by(rd.nm) %>% summarize(numRdId=length(unique(rd.ri)))
-tmpDF[tmpDF$numRdId > 1,]
+tmpDF[tmpDF$numRdId > 1,] %>% kable
 ```
+
 It was found that the two roads displayed in the above results have more than one id, which is weird. We found the reason to be that since bey2ollak.com supports roads in both Cairo and Alex, there are two roads named "Other Roads" in both cities. Also, there are two entries among the two cities for the Sa7rawy road connecting them.
 
 ## Reporter name
@@ -145,12 +151,11 @@ The two columns `rd.rp.nm` and `rd.rp.fullnm` represent the name and full name o
 # Descriptive statistics
 
 ## General Summary
-Below is a general summary of the data. Here we temporarily convert the road id, status id, and weekday columns into *factor*, since their initial representations (*int* or *character*) did not allow for any meaningful statistics.
+Below is a general summary of the data. Here we temporarily convert the road id, report status id, and weekday columns into *factors*, since their initial representations (*int* or *character*) did not allow for any meaningful statistics.
 ```{r}
 tmpDf <- df
 tmpDf$rd.rp.cmid <- NULL
 tmpDf$rd.ri <- as.factor(df$rd.ri)
-tmpDf$rd.stid <- as.factor(df$rd.stid)
 tmpDf$rd.rp.stid <- as.factor(df$rd.rp.stid)
 tmpDf$rd.rp.wday <- as.factor(df$rd.rp.wday)
 tmpDf %>% summary %>% kable
@@ -174,10 +179,10 @@ c1/c2
 ```
 We find that this high number is because the majority of this kind of reports comes from the automated speed update agent.
 
-3. The only other reports having a significant percentage in the dataset are the remaining traffic flow status reports (with *IDs* 1, 3, 4 & 5) and the questions (*ID* 10)
+3. The only other reports having a significant percentage in the dataset are the remaining traffic flow status reports (with *IDs* 1, 3, 4 & 5) and the questions (*ID 10*)
 
 ##Report type across time of day
-Below is a distribution of each report type across different hours of the day. Each graph represents a report type, ranging from IDs 1 to 10. The x-axis represents the day hour oredered from midnight till 23.00 hr. The y-axis represents the report count.
+Below is a distribution of each report type across different hours of the day. Each graph represents a report type, ranging from IDs 1 to 10. The x-axis represents the day hour ordered from midnight till 23.00 hr. The y-axis represents the report count.
 ```{r}
 ggplot(df, aes(rd.rp.hour)) + geom_bar() + facet_wrap(~ rd.rp.stid)
 ```
@@ -224,12 +229,12 @@ Now we examine the hours which have the highest overall user activity, in terms 
 ggplot(df, aes(factor(rd.rp.hour))) + geom_bar()
 ```
 
-As expected, the two time periods whith highest activity are the morning from 7.00 to 10.00 and the period from 16.00 to 19.00, with local maximums at 8.00 & 17.00 respectively.
+As expected, the two time periods with highest activity are the morning from 7.00 to 10.00 and the period from 16.00 to 19.00, with local maximums at 8.00 & 17.00 respectively.
 
 
 # Road directions
 The `rd.nm` column typically consists of 2 parts: the name of the **road** itself and its **direction**. So far, the studies that were distributed across the roads were with respect to each direction. By dividing this column into two columns, we can now distribute with respect to the road as a whole.
-```{r}
+```{r warning=FALSE}
 genRoadDf <-  df %>% separate(rd.nm,c("rd.name","rd.dir"),";")
 ```
 Now we shall proceed by getting the **roads** having the highest user activity (& neglecting the uni-directional ones). We will then do some analysis on the directions of a highly active road. Such analysis can lead to observations about this specific road and properties of each direction in it, that were not visible before.
@@ -243,4 +248,7 @@ genRoadDf <- genRoadDf[genRoadDf$rd.name=="Kobry 6 October",]
 ggplot(genRoadDf, aes(rd.rp.hour)) + geom_bar() + facet_wrap(~ rd.dir)
 ```
 
-An interesting observation here is that roads whose directions are **to Ta7rir** exhibit higher user activity than roads whose directions are **from Ta7rir**. 
+An interesting observation here is that roads whose directions are **to Ta7rir** exhibit higher user activity than roads whose directions are **from Ta7rir**.
+
+# Summary
+We have arrived at the end of our analysis on the traffic report data crawled from bey2ollak.com website. We began by cleaning the dataset by getting rid of unwanted rows and columns, and converting the desired ones into more usable forms. Understanding the column meanings was done by querying the dataset and comparing it with bey2ollak.com response data. Interesting insights have been obtained regarding user activity and traffic congestion times. Furhtermore, some observations regarding highly congested roads were made, which agree with our daily struggles on such roads. Lastly, we singled out "Kobry 6 October" road and focused on the user activity on its different directions.
