@@ -71,6 +71,12 @@ df$rd.mn <- NULL
 df$rd.rp.hr <- NULL
 df$rd.rp.mn <- NULL
 ```
+Finally, we divide into weekday and hour of the day; these two values are the only ones required in our subsequent studies.
+```{r}
+df <- df %>% mutate(rd.rp.hour=format(as.POSIXct(rd.rp.time, format="%a %b %e %H:%M:%S UTC %Y"), format="%H")) %>% mutate(rd.rp.hour = ((type.convert(rd.rp.hour) + 2) %% 24))
+df <- df %>% mutate(rd.rp.wday=format(as.POSIXct(rd.rp.time, format="%a %b %e %H:%M:%S UTC %Y"), format="%a"))
+df$rd.rp.time <- NULL
+```
 
 ## Report status `rd.rp.stid`
 It appears from bey2ollak.com response data that the `rd.rp.stid` value indicates the status id of the report being submitted. Values ranging from 1 to 5 correspond to reports on the road congestion, with 1 being the best value (its default `rd.rp.cm` is "7alawa") and 5 the worst value (its default `rd.rp.cm` is "mafeesh amal"). Values from 6 to 10 represent inquiries or special reports like accidents.  
@@ -134,17 +140,24 @@ It was found that the two roads displayed in the above results have more than on
 
 ## Reporter name
 The two columns `rd.rp.nm` and `rd.rp.fullnm` represent the name and full name of the user who submitted the report, respectively. Two specail names in the `rd.rp.nm` column stand out in term of repititions; **bey2ollakgps** and **fa3el kheir**. The first is some type of an automated agent which gives periodic speed updates, while **fa3el kheir** is the default name for any reporter not willing to supply a specific name.
-```{r}
-df %>% count(rd.rp.nm,sort=TRUE) %>% head
-```
 
 # Descriptive statistics
 
-## Type of reports
-As previously explained, reports submitted by users can have one of 10 types, as categorized by the `rd.rp.stid` column. While IDs from 1 to 5 describe general info about the current status of the road in terms of congestion, IDs from 6 to 10 are dedicated for special reports. We will now study some statistics about this column.
+## General Summary
+Below is a general summary of the data. Here we temporarily convert the road id, status id, and weekday columns into *factor*, since their initial representations (*int* or *character*) did not allow for any meaningful statistics.
+```{r}
+tmpDf <- df
+tmpDf$rd.rp.cmid <- NULL
+tmpDf$rd.ri <- as.factor(df$rd.ri)
+tmpDf$rd.stid <- as.factor(df$rd.stid)
+tmpDf$rd.rp.stid <- as.factor(df$rd.rp.stid)
+tmpDf$rd.rp.wday <- as.factor(df$rd.rp.wday)
+tmpDf %>% summary %>% kable
+rm(tmpDf)
+```
 
-### Univeral report types
-We will now present a general intuition about the type of all the reports submitted by the users, without any distribution across time or space.
+## Type of reports
+As previously explained, reports submitted by users can have one of 10 types, as categorized by the `rd.rp.stid` column. While IDs from 1 to 5 describe general info about the current status of the road in terms of congestion, IDs from 6 to 10 are dedicated for special reports. We will now present a general intuition about the type of all the reports submitted by the users, without any distribution across time or space.
 ```{r}
 ggplot(df, aes(factor(rd.rp.stid))) + geom_bar()
 ```
@@ -160,55 +173,65 @@ c1/c2
 ```
 We find that this high number is because the majority of this kind of reports comes from the automated speed update agent.
 
-3. The only other reports having a significant percentage in the dataset are the remaining traffic flow status reports (with IDs 1, 3, 4 & 5) and the questions (ID 10)
+3. The only other reports having a significant percentage in the dataset are the remaining traffic flow status reports (with *IDs* 1, 3, 4 & 5) and the questions (*ID* 10)
 
+##Report type across time of day
+Below is a distribution of each report type across different hours of the day. Each graph represents a report type, ranging from IDs 1 to 10. The x-axis represents the day hour oredered from midnight till 23.00 hr. The y-axis represents the report count.
+```{r}
+ggplot(df, aes(rd.rp.hour)) + geom_bar() + facet_wrap(~ rd.rp.stid)
+```
 
+## Congestion hours
+A more useful distribution across day hours should focus only on the reports concerning the traffic flow ( *`rd.rp.stid`=1~5*), neglecting the special reports and questions. Now, the congestion can be represented by a simple mean value across the IDs. The higher this value, the more congested the road is.
+```{r}
+congestionDf <- df[df$rd.rp.stid < 6,] %>% group_by(rd.rp.hour) %>% summarize(avRep=mean(rd.rp.stid), numRep=n())
+ggplot(congestionDf, aes(x=rd.rp.hour,y=avRep)) + geom_tile()
+congestionDf <- congestionDf %>% arrange(desc(avRep))
+congestionDf %>% head %>% kable
+```
 
-# Descriptions on the data
+It is shown that 18.00 is the highest congestion hour, and the highest congestion period is from 15.00 to 19.00 (inclusively). For the morning period, a congestion peak at hour 8.00 is detected.
+
+##Congestion days
+We now present another distribution to indicate the congestion across the weekdays. A similar approach was followed by filtering out the special reports and questions.
+```{r}
+congestionDf <- df[df$rd.rp.stid < 6,] %>% group_by(rd.rp.wday) %>% summarize(avRep=mean(rd.rp.stid), numRep=n())
+ggplot(congestionDf, aes(x=rd.rp.wday,y=avRep)) + geom_tile()
+```
+
+It is observed that the day having the highest overall congestion is Monday. The lowest congestion is on Friday, and the lowest congestion on a weekday is on Saturday.
 
 ## Congestion regions
+Now, with the same filtering technique on report types, we take a look at roads with the highest congestion. A new filtering approach is added here based on the number of reports. This aproach was not needed before since each hour or weekday typically had a significant number of reports. This is not the case here, as some unpopular roads can have a trivial number of reports throughout the whole dataset.
 ```{r}
-tmpDf <- df[!is.na(df$rd.rp.stid),]
-tmpDf <- tmpDf[tmpDf$rd.rp.stid < 6,]
-#congestionDf <- tmpDf %>% group_by(rd.nm) %>% summarize(avRep=mean(rd.rp.stid)) %>% arrange(desc(avRep))
-congestionDf <- tmpDf %>% group_by(rd.nm) %>% summarize(avRep=mean(rd.rp.stid), numRep=n()) %>% arrange(desc(avRep))
+congestionDf <- df[df$rd.rp.stid < 6,] %>% group_by(rd.nm) %>% summarize(avRep=mean(rd.rp.stid), numRep=n()) %>% arrange(desc(avRep))
+head(congestionDf,1) %>% kable
+```
+
+As shown above, the road proposed to have the highest congestion only relies on 3 reports, which is too trivial to consider. To remedy this, we threshold our results according to the mean number of reports among all roads.
+```{r}
 meanNmRep <- mean(congestionDf$numRep)
 congestionDfHighNmRep <- congestionDf[congestionDf$numRep > meanNmRep,]
-head(congestionDfHighNmRep)
+congestionDfHighNmRep %>% head %>% kable
 ```
 
-### Congestion hours
+This makes much more sense now.
+
+##Highest user activity hours
+Now we examine the hours which have the highest overall user activity, in terms of reports submitted, regardless of the report type.
 ```{r}
-tmpDf <- df[!is.na(df$rd.rp.stid),]
-tmpDf <- tmpDf[tmpDf$rd.rp.stid < 6,]
-tmpDf2 <- tmpDf %>% mutate(Hour=format(as.POSIXct(rd.rp.time, format="%a %b %e %H:%M:%S UTC %Y"), format="%H"))
-tmpDf2 <- tmpDf2 %>% mutate(Hour = ((type.convert(Hour) + 2) %% 24))
-congestionDf <- tmpDf2 %>% group_by(Hour) %>% summarize(avRep=mean(rd.rp.stid), numRep=n()) %>% arrange(desc(avRep))
-congestionDf
+ggplot(df, aes(factor(rd.rp.hour))) + geom_bar()
 ```
 
-###Highest user activity hours
-```{r}
-tmpDf <- df[!is.na(df$rd.rp.stid),]
-tmpDf <- tmpDf[tmpDf$rd.rp.stid < 6,]
-tmpDf2 <- tmpDf %>% mutate(Hour=format(as.POSIXct(rd.rp.time, format="%a %b %e %H:%M:%S UTC %Y"), format="%H"))
-tmpDf2 <- tmpDf2 %>% mutate(Hour = ((type.convert(Hour) + 2) %% 24))
-congestionDf <- tmpDf2 %>% group_by(Hour) %>% summarize(avRep=mean(rd.rp.stid), numRep=n()) %>% arrange(desc(numRep))
-congestionDf
-```
+As expected, the two time periods whith highest activity are the morning from 7.00 to 10.00 and the period from 16.00 to 19.00, with local maximums at 8.00 & 17.00 respectively.
 
-###Congestion days
-```{r}
-tmpDf <- df[!is.na(df$rd.rp.stid),]
-tmpDf <- tmpDf[tmpDf$rd.rp.stid < 6,]
-tmpDf2 <- tmpDf %>% mutate(Weekday=format(as.POSIXct(rd.rp.time, format="%a %b %e %H:%M:%S UTC %Y"), format="%a"))
-congestionDf <- tmpDf2 %>% group_by(Weekday) %>% summarize(avRep=mean(rd.rp.stid), numRep=n()) %>% arrange(desc(avRep))
-congestionDf
-```
+
+# Feature engineering
+The `rd.nm` column typically consists of 2 parts: the name of the **road** itself and its **direction**. So far, the studies that were distributed across the roads were with respect to each direction. By dividing this column into two columns, we can now distribute with respect to the road as a whole.
 
 #Trivia
 
-#### Testing correlations
+## Testing correlations
 ```{r}
 cor_feats = c("rd.ri","rd.stid","rd.rp.stid","rd.rp.cmid")
 cor_mat = cor(df[, cor_feats], use = "complete")
