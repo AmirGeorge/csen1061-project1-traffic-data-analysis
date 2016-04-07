@@ -10,6 +10,7 @@ library(dplyr)
 library(ggplot2)
 library(corrplot)
 library(knitr)
+library(tidyr)
 ```
 
 ## First acquaintance with the data
@@ -185,7 +186,7 @@ ggplot(df, aes(rd.rp.hour)) + geom_bar() + facet_wrap(~ rd.rp.stid)
 A more useful distribution across day hours should focus only on the reports concerning the traffic flow ( *`rd.rp.stid`=1~5*), neglecting the special reports and questions. Now, the congestion can be represented by a simple mean value across the IDs. The higher this value, the more congested the road is.
 ```{r}
 congestionDf <- df[df$rd.rp.stid < 6,] %>% group_by(rd.rp.hour) %>% summarize(avRep=mean(rd.rp.stid), numRep=n())
-ggplot(congestionDf, aes(x=rd.rp.hour,y=avRep)) + geom_tile()
+ggplot(congestionDf, aes(x=rd.rp.hour,y=avRep)) + geom_bar(stat="identity")
 congestionDf <- congestionDf %>% arrange(desc(avRep))
 congestionDf %>% head %>% kable
 ```
@@ -196,10 +197,10 @@ It is shown that 18.00 is the highest congestion hour, and the highest congestio
 We now present another distribution to indicate the congestion across the weekdays. A similar approach was followed by filtering out the special reports and questions.
 ```{r}
 congestionDf <- df[df$rd.rp.stid < 6,] %>% group_by(rd.rp.wday) %>% summarize(avRep=mean(rd.rp.stid), numRep=n())
-ggplot(congestionDf, aes(x=rd.rp.wday,y=avRep)) + geom_tile()
+ggplot(congestionDf, aes(x=rd.rp.wday,y=avRep)) + geom_bar(stat="identity")
 ```
 
-It is observed that the day having the highest overall congestion is Monday. The lowest congestion is on Friday, and the lowest congestion on a weekday is on Saturday.
+It is observed that the day having the highest overall congestion is Monday. The lowest congestion is on Friday, and the lowest congestion on a working day is on Saturday.
 
 ## Congestion regions
 Now, with the same filtering technique on report types, we take a look at roads with the highest congestion. A new filtering approach is added here based on the number of reports. This aproach was not needed before since each hour or weekday typically had a significant number of reports. This is not the case here, as some unpopular roads can have a trivial number of reports throughout the whole dataset.
@@ -226,15 +227,20 @@ ggplot(df, aes(factor(rd.rp.hour))) + geom_bar()
 As expected, the two time periods whith highest activity are the morning from 7.00 to 10.00 and the period from 16.00 to 19.00, with local maximums at 8.00 & 17.00 respectively.
 
 
-# Feature engineering
+# Road directions
 The `rd.nm` column typically consists of 2 parts: the name of the **road** itself and its **direction**. So far, the studies that were distributed across the roads were with respect to each direction. By dividing this column into two columns, we can now distribute with respect to the road as a whole.
-
-#Trivia
-
-## Testing correlations
 ```{r}
-cor_feats = c("rd.ri","rd.stid","rd.rp.stid","rd.rp.cmid")
-cor_mat = cor(df[, cor_feats], use = "complete")
-corrplot(method = "shade", cor_mat)
-cor_mat
+genRoadDf <-  df %>% separate(rd.nm,c("rd.name","rd.dir"),";")
 ```
+Now we shall proceed by getting the **roads** having the highest user activity (& neglecting the uni-directional ones). We will then do some analysis on the directions of a highly active road. Such analysis can lead to observations about this specific road and properties of each direction in it, that were not visible before.
+```{r}
+genRoadDf[!is.na(genRoadDf$rd.dir),] %>% group_by(rd.name) %>% summarize(numRep=n(),numDir=length(unique(rd.dir))) %>% arrange(desc(numRep)) %>% head %>% kable
+```
+
+While "Da2ery" road is the one with the highest activity, it is distributed among 24 directions. So we choose to do our analysis on "Kobry 6 October" road which has only 4 directions, to produce results that are visually clearer.
+```{r}
+genRoadDf <- genRoadDf[genRoadDf$rd.name=="Kobry 6 October",]
+ggplot(genRoadDf, aes(rd.rp.hour)) + geom_bar() + facet_wrap(~ rd.dir)
+```
+
+An interesting observation here is that roads whose directions are **to Ta7rir** exhibit higher user activity than roads whose directions are **from Ta7rir**. 
